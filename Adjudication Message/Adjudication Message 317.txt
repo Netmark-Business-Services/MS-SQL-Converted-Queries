@@ -1,0 +1,67 @@
+WITH RecentClaims AS (
+    SELECT
+        cf.*,
+        ROW_NUMBER() OVER (PARTITION BY cf.CLAIM_HCC_ID ORDER BY cf.MOST_RECENT_PROCESS_TIME DESC) AS row_num
+    FROM
+        HealthEdge_Prod_Copy.dbo.CLAIM_FACT cf
+    WHERE
+        cf.IS_CONVERTED = 'N' 
+        AND cf.IS_TRIAL_CLAIM = 'N' 
+        AND cf.IS_CURRENT = 'Y'
+)
+SELECT DISTINCT  
+    rc.CLAIM_HCC_ID,
+    aclf.CLAIM_LINE_HCC_ID,
+    rc.CLAIM_STATUS,
+    rc.CLAIM_TYPE_NAME,
+    csc.CLAIM_SOURCE_NAME,
+    am.ADJUDICATION_MESSAGE_CODE AS Message_Code, 
+    am.ADJUDICATION_MESSAGE_DESC AS MESSAGE_DESC, 
+    EF.flag_action,
+    EF.flag_message,
+    EF.flag_mnemonic,
+    aclf.SERVICE_CODE,
+    -- DIAGNOSIS_CODES Aggregation logic excluded for MS SQL
+    PT.PROVIDER_TAXONOMY_CODE,
+    pt.CLASSIFICATION AS Supplier_Classification,
+    rc.SI_SUPPLIER_NPI,
+    ashf.SUPPLIER_NPI AS ASHF_SUPPLIER_NPI,
+    rc.SI_SUPPLIER_ID,
+    ashf.SUPPLIER_HCC_ID AS ASHF_SUPPLIER_HCC_ID,
+    rc.SI_SUPPLIER_NAME,
+    ashf.SUPPLIER_NAME AS ASHF_SUPPLIER_NAME,
+    dd.DATE_VALUE AS RECEIPT_DATE,
+    rc.MOST_RECENT_PROCESS_TIME
+FROM
+    RecentClaims rc
+LEFT JOIN HealthEdge_Prod_Copy.dbo.CLAIM_SOURCE_CODE csc 
+    ON rc.CLAIM_SOURCE_KEY = csc.CLAIM_SOURCE_KEY
+LEFT JOIN HealthEdge_Prod_Copy.dbo.ALL_CLAIM_LINE_FACT aclf 
+    ON rc.CLAIM_FACT_KEY = aclf.CLAIM_FACT_KEY
+LEFT JOIN HealthEdge_Prod_Copy.dbo.CLAIM_LN_FCT_TO_EXT_RES clfer 
+    ON aclf.CLAIM_LINE_FACT_KEY = clfer.CLAIM_LINE_FACT_KEY
+LEFT JOIN HealthEdge_Prod_Copy.dbo.EXT_EDITOR_CLM_LN_RES_TO_FLAGS EECLRF 
+    ON clfer.EXT_EDITOR_CLM_LN_RESULT_KEY = EECLRF.EXT_EDITOR_CLM_LN_RESULT_KEY
+LEFT JOIN HealthEdge_Prod_Copy.dbo.EDIT_FLAG EF 
+    ON EECLRF.EXT_EDITOR_EDIT_FLAG_KEY = EF.EXT_EDITOR_EDIT_FLAG_KEY
+LEFT JOIN HealthEdge_Prod_Copy.dbo.DATE_DIMENSION dd 
+    ON rc.RECEIPT_DATE_KEY = dd.DATE_KEY
+LEFT JOIN HealthEdge_Prod_Copy.dbo.SUPPLIER ashf 
+    ON rc.SUPPLIER_KEY = ashf.SUPPLIER_KEY
+LEFT JOIN HealthEdge_Prod_Copy.dbo.CLAIM_LINE_FACT_TO_DIAG CLFD 
+    ON aclf.CLAIM_LINE_FACT_KEY = CLFD.CLAIM_LINE_FACT_KEY
+LEFT JOIN HealthEdge_Prod_Copy.dbo.CLAIM_LINE_FACT_TO_ADJD_MSG clfam 
+    ON aclf.CLAIM_LINE_FACT_KEY = clfam.CLAIM_LINE_FACT_KEY 
+LEFT JOIN HealthEdge_Prod_Copy.dbo.ADJUDICATION_MESSAGE am 
+    ON clfam.ADJUDICATION_MESSAGE_KEY = am.ADJUDICATION_MESSAGE_KEY 
+LEFT JOIN HealthEdge_Prod_Copy.dbo.PROVIDER_TAXONOMY pt 
+    ON ashf.PRIMARY_CLASSIFICATION_KEY = pt.PROVIDER_TAXONOMY_KEY
+WHERE
+    rc.row_num = 1
+    AND rc.CLAIM_STATUS = 'Denied'
+    AND am.ADJUDICATION_MESSAGE_CODE = '317' 
+    -- Optional filters:
+    -- AND EF.flag_mnemonic = '01AMD'
+    -- AND EF.flag_message LIKE '%Pattern 19619%'
+    -- AND pt.CLASSIFICATION = 'Home Health'
+    AND EF.flag_message LIKE '%Pattern 5364%';
