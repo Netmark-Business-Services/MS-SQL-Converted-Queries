@@ -1,0 +1,28 @@
+SELECT   
+    DISTINCT cf.CLAIM_HCC_ID,
+        aclf.CLAIM_LINE_HCC_ID,
+        aclf.PAID_AMOUNT,
+        aclf.TOTAL_AMOUNT,       
+        cf.CLAIM_TYPE_NAME,
+        cccf.AMOUNT,
+        cccf.CAS_CODE_KEY,
+        cc.CAS_CODE_DESC,
+        cf.claim_status,
+        csc.CLAIM_SOURCE_NAME
+    FROM
+        payor_dw.claim_fact cf
+    LEFT JOIN
+        payor_dw.ALL_CLAIM_LINE_FACT aclf ON cf.CLAIM_FACT_KEY = aclf.CLAIM_FACT_KEY
+    LEFT JOIN
+    	payor_dw.CLAIM_LINE_FT_TO_CLM_CAS_CODE clftccc ON aclf.CLAIM_LINE_FACT_KEY = clftccc.CLAIM_LINE_FACT_KEY
+   	LEFT JOIN
+   	    payor_dw.CLAIM_CAS_CODE_FACT cccf ON clftccc.CLAIM_CAS_CODE_FACT_KEY = cccf.CLAIM_CAS_CODE_FACT_KEY
+   	LEFT JOIN
+   		payor_dw.CAS_CODE cc ON cccf.CAS_CODE_KEY = cc.CAS_CODE_KEY
+    LEFT JOIN
+        payor_dw.CLAIM_SOURCE_CODE csc ON cf.claim_source_key = csc.claim_source_key
+    WHERE
+        cf.IS_CONVERTED = 'N'
+        AND cf.IS_TRIAL_CLAIM = 'N'
+        AND cf.CLAIM_TYPE_NAME = 'Professional'
+        AND aclf.PAID_AMOUNT > 0;

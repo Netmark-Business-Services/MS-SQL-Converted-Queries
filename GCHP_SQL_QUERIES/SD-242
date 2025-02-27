@@ -1,0 +1,69 @@
+WITH RankedClaims AS (
+    SELECT
+  cf.*,
+        ROW_NUMBER() OVER (PARTITION BY cf.CLAIM_HCC_ID ORDER BY cf.MOST_RECENT_PROCESS_TIME DESC) AS rn
+    FROM
+        CLAIM_FACT cf
+    WHERE
+        cf.IS_CONVERTED = 'N'
+        AND cf.IS_TRIAL_CLAIM = 'N'
+        AND cf.IS_CURRENT ='Y'
+)
+SELECT
+		rc.CLAIM_HCC_ID AS "Claim ID",
+        rc.CLAIM_STATUS AS "Claim Status",
+        rc.CLAIM_TYPE_NAME AS "Claim Type",
+        clf.CLAIM_LINE_HCC_ID AS "Claim Line ID",
+        m.MEMBER_FULL_NAME AS "Member Name",
+        m.MEMBER_HCC_ID AS "Member ID",
+        s.SUPPLIER_HCC_ID AS "Supplier ID",
+        s.SUPPLIER_NPI AS "Supplier NPI",
+        s.SUPPLIER_NAME AS "Supplier Name",
+        PT.PROVIDER_TAXONOMY_CODE,
+        pt.CLASSIFICATION AS Supplier_Classification,
+        rc.TYPE_OF_BILL_CODE AS "Type Of Bill",
+        DHF.DRG_CODE,
+        d6.DATE_VALUE AS "Service Start Date",
+        d7.DATE_VALUE AS "Service End Date",
+        clf.SERVICE_CODE,
+        ncf.SUBMITTED_NDC_CODE AS "NDC Number",
+        clf.REVENUE_CODE,
+        --mods.MODIFIERS AS "Modifiers",
+        clf.PLACE_OF_SERVICE_CODE AS "Place Of Service",
+        rc.PRIMARY_DIAGNOSIS_CODE AS "Primary Diagnosis",
+        clf.UNIT_COUNT,
+        d5.DATE_VALUE AS "Admit Date",
+        d1.DATE_VALUE AS "Statement Period From",
+        d2.DATE_VALUE AS "Statement Period To",
+        dd.DATE_VALUE AS RECEIPT_DATE,
+      	rc.ENTRY_TIME,
+      	rc.MOST_RECENT_PROCESS_TIME
+FROM RankedClaims rc
+	LEFT JOIN payor_dw.DATE_DIMENSION dd ON rc.RECEIPT_DATE_KEY = dd.DATE_KEY
+    LEFT JOIN payor_dw.CLAIM_LINE_FACT clf ON rc.CLAIM_FACT_KEY = clf.CLAIM_FACT_KEY
+    LEFT JOIN payor_dw."MEMBER" m ON rc.MEMBER_KEY = m.MEMBER_KEY
+    LEFT JOIN payor_dw.SUPPLIER s ON rc.SUPPLIER_KEY = s.SUPPLIER_KEY
+    LEFT JOIN payor_dw.DATE_DIMENSION d1 ON rc.STATEMENT_START_DATE_KEY = d1.DATE_KEY
+    LEFT JOIN payor_dw.DATE_DIMENSION d2 ON rc.STATEMENT_END_DATE_KEY = d2.DATE_KEY
+    LEFT JOIN payor_dw.DATE_DIMENSION d5 ON rc.ADMISSION_DATE_KEY = d5.DATE_KEY
+    LEFT JOIN payor_dw.DATE_DIMENSION d6 ON clf.SERVICE_START_DATE_KEY = d6.DATE_KEY
+    LEFT JOIN payor_dw.DATE_DIMENSION d7 ON clf.SERVICE_END_DATE_KEY = d7.DATE_KEY
+    LEFT JOIN payor_dw.CLAIM_LN_FACT_TO_NDC_CODE_INFO cfnc ON clf.CLAIM_LINE_FACT_KEY = cfnc.CLAIM_LINE_FACT_KEY
+    LEFT JOIN payor_dw.NDC_CODE_INFO_FACT ncf ON cfnc.NDC_CODE_INFO_KEY = ncf.NDC_CODE_INFO_KEY
+    LEFT JOIN payor_dw.DRG DHF ON rc.DRG_KEY = DHF.DRG_KEY
+    LEFT JOIN payor_dw.PROVIDER_TAXONOMY pt ON s.PRIMARY_CLASSIFICATION_KEY = pt.PROVIDER_TAXONOMY_KEY
+--	LEFT JOIN payor_dw.PLACE_OF_SERVICE pos ON clf.PLACE_OF_SERVICE_CODE = pos.PLACE_OF_SERVICE_CODE 
+--	LEFT JOIN payor_dw.TYPE_OF_BILL tob ON rc.TYPE_OF_BILL_CODE = tob.TYPE_OF_BILL_CODE 
+--	LEFT JOIN (
+--        SELECT
+--            CLFM.CLAIM_LINE_FACT_KEY,
+--            LISTAGG(CLFM.MODIFIER_CODE, ', ') WITHIN GROUP (ORDER BY CLFM.MODIFIER_CODE) AS MODIFIERS
+--        FROM
+--            payor_dw.CLAIM_LINE_FACT_TO_MODIFIER CLFM
+--        GROUP BY
+--            CLFM.CLAIM_LINE_FACT_KEY
+--    ) mods ON clf.CLAIM_LINE_FACT_KEY = mods.CLAIM_LINE_FACT_KEY
+WHERE
+    rn = 1
+    AND s.SUPPLIER_HCC_ID = '1000342'
+    AND  dd.DATE_VALUE >= TO_TIMESTAMP('2024-11-01 00:00:00', 'YYYY-MM-DD HH24:MI:SS')

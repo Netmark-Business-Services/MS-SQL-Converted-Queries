@@ -1,0 +1,45 @@
+--Query using Max of the CLAIM_FACT_KEY + is_current=’y’
+SELECT cf.CLAIM_FACT_KEY ,cf.CLAIM_HCC_ID, cf.CLAIM_STATUS , dd.DATE_VALUE AS Receipt_Date,
+    cf.ENTRY_TIME,cf.IS_CURRENT ,cf.MOST_RECENT_PROCESS_TIME,TRUNC(CURRENT_DATE) - TRUNC(dd.DATE_VALUE) AS Claim_Aging
+FROM claim_fact cf
+LEFT JOIN
+    payor_dw.DATE_DIMENSION dd ON cf.RECEIPT_DATE_KEY = dd.DATE_KEY
+Where is_current = 'Y'
+And            
+EXISTS (
+            SELECT *
+            FROM payor_dw.claim_fact cf2
+            WHERE cf2.claim_hcc_id = cf.claim_hcc_id
+            AND cf2.is_current = 'Y'
+            GROUP BY cf2.claim_hcc_id
+            HAVING MAX(cf2.claim_fact_key) = cf.claim_fact_key
+        )
+       AND cf.IS_CONVERTED = 'N'
+       AND cf.IS_TRIAL_CLAIM = 'N'
+       AND  cf.ENTRY_TIME >= TO_TIMESTAMP('2024-07-02 00:00:00', 'YYYY-MM-DD HH24:MI:SS')
+       AND cf.CLAIM_HCC_ID = '2024177000868'
+
+############################################################################################################################################################################
+
+--Query using Most-Recent-Processing-Time
+WITH RecentClaims AS (
+    SELECT
+        cf.*,
+        ROW_NUMBER() OVER (PARTITION BY cf.CLAIM_HCC_ID ORDER BY cf.MOST_RECENT_PROCESS_TIME DESC) as row_num
+    FROM
+        payor_dw.claim_fact cf
+    WHERE
+        cf.IS_CONVERTED = 'N' AND
+        cf.IS_TRIAL_CLAIM = 'N' AND
+        cf.ENTRY_TIME >= TO_TIMESTAMP('2024-07-02 00:00:00', 'YYYY-MM-DD HH24:MI:SS')
+)
+SELECT  
+rc.CLAIM_FACT_KEY ,rc.CLAIM_HCC_ID, rc.CLAIM_STATUS , dd.DATE_VALUE AS Receipt_Date,
+    rc.ENTRY_TIME,rc.IS_CURRENT ,rc.MOST_RECENT_PROCESS_TIME,TRUNC(CURRENT_DATE) - TRUNC(dd.DATE_VALUE) AS Claim_Aging
+FROM
+    RecentClaims rc
+LEFT JOIN
+    payor_dw.DATE_DIMENSION dd ON rc.RECEIPT_DATE_KEY = dd.DATE_KEY
+WHERE
+    rc.row_num = 1
+    AND rc.CLAIM_HCC_ID = '2024177000868'

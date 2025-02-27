@@ -1,0 +1,36 @@
+WITH RecentClaims AS (
+    SELECT
+        cf.*,
+        ROW_NUMBER() OVER (PARTITION BY cf.CLAIM_HCC_ID ORDER BY cf.MOST_RECENT_PROCESS_TIME DESC) as row_num
+    FROM
+        payor_dw.claim_fact cf
+    WHERE
+        cf.IS_CONVERTED = 'N' AND
+        cf.IS_TRIAL_CLAIM = 'N' AND
+        cf.IS_CURRENT = 'Y' AND 
+        cf.ENTRY_TIME >= TO_TIMESTAMP('2024-07-02 00:00:00', 'YYYY-MM-DD HH24:MI:SS') 
+)
+SELECT 
+    rc.CLAIM_HCC_ID,
+    rc.CLAIM_STATUS,
+    rc.IS_FIRST_PASS_AUTO_ADJUDICATED,
+    rc.IS_CONVERTED,
+    rc.IS_CURRENT,
+    rc.MOST_RECENT_PROCESS_TIME,
+    rc.ENTRY_TIME,
+    dd.DATE_VALUE AS RECEIPT_DATE,
+    TRUNC(CURRENT_DATE) -  TRUNC(dd.DATE_VALUE) AS day_difference_receipt,
+    ashf.SUPPLIER_HCC_ID AS ASHF_SUPPLIER_HCC_ID,
+    ashf.SUPPLIER_NPI AS ASHF_SUPPLIER_NPI
+FROM
+    RecentClaims rc
+LEFT JOIN
+    payor_dw.CLAIM_SOURCE_CODE csc ON rc.CLAIM_SOURCE_KEY = csc.CLAIM_SOURCE_KEY
+LEFT JOIN
+    payor_dw.DATE_DIMENSION dd ON rc.RECEIPT_DATE_KEY = dd.DATE_KEY
+LEFT JOIN 
+    payor_dw.SUPPLIER ashf ON rc.SUPPLIER_KEY = ashf.SUPPLIER_KEY
+WHERE
+    rc.row_num = 1
+    AND rc.CLAIM_STATUS ='Rejected'
+    AND TRUNC(rc.MOST_RECENT_PROCESS_TIME) <> TRUNC(rc.ENTRY_TIME);

@@ -1,0 +1,51 @@
+  WITH RecentClaims AS (
+    SELECT
+        cf.*,
+        ROW_NUMBER() OVER (PARTITION BY cf.CLAIM_HCC_ID ORDER BY cf.MOST_RECENT_PROCESS_TIME DESC) as row_num
+    FROM
+        payor_dw.claim_fact cf
+    WHERE
+        cf.IS_CONVERTED = 'N' AND
+        cf.IS_TRIAL_CLAIM = 'N' AND
+        cf.ENTRY_TIME >= TO_TIMESTAMP('2024-07-02 00:00:00', 'YYYY-MM-DD HH24:MI:SS')
+)
+SELECT DISTINCT
+    rc.CLAIM_HCC_ID,
+    rrte.trigger_code AS EXCEPTION_TRIGGER,
+    rrte.trigger_desc AS EXCEPTION_TRIGGER_DESC,
+    dd.DATE_VALUE AS RECEIPT_DATE,
+    TRUNC(CURRENT_DATE) -  TRUNC(dd.DATE_VALUE) AS day_difference_receipt,
+    CASE
+    WHEN TRUNC(CURRENT_DATE) - TRUNC(dd.DATE_VALUE) BETWEEN 0 AND 15 THEN '0-15 Days'
+    WHEN TRUNC(CURRENT_DATE) - TRUNC(dd.DATE_VALUE) BETWEEN 16 AND 30 THEN '16-30 Days'
+    WHEN TRUNC(CURRENT_DATE) - TRUNC(dd.DATE_VALUE) BETWEEN 31 AND 45 THEN '31-45 Days'
+    WHEN TRUNC(CURRENT_DATE) - TRUNC(dd.DATE_VALUE) BETWEEN 46 AND 60 THEN '46-60 Days'
+    WHEN TRUNC(CURRENT_DATE) - TRUNC(dd.DATE_VALUE) > 60 THEN '60+ Days'
+    ELSE 'Unknown'
+    END AS days_inventory,
+    rc.ENTRY_TIME,
+    rc.MOST_RECENT_PROCESS_TIME ,
+    rc.SI_SUPPLIER_NAME,
+    ashf.SUPPLIER_NAME AS ASHF_SUPPLIER_NAME,
+    rc.SI_SUPPLIER_NPI,
+    ashf.SUPPLIER_NPI  AS ASHF_SUPPLIER_NPI,
+    RC.SI_SUPPLIER_ID,
+    ashf.SUPPLIER_HCC_ID AS ASHF_SUPPLIER_HCC_ID
+FROM
+    RecentClaims rc
+LEFT JOIN
+    payor_dw.CLAIM_SOURCE_CODE csc ON rc.CLAIM_SOURCE_KEY = csc.CLAIM_SOURCE_KEY
+LEFT JOIN
+    payor_dw.CLAIM_FACT_TO_EXCEPTION cfte ON rc.claim_fact_key = cfte.claim_fact_key
+LEFT JOIN
+    payor_dw.review_repair_trigger rrte ON cfte.review_repair_trigger_key = rrte.review_repair_trigger_key
+LEFT JOIN
+    payor_dw.DATE_DIMENSION dd ON rc.RECEIPT_DATE_KEY = dd.DATE_KEY
+LEFT JOIN
+	payor_dw.ALL_SUPPLIER_HISTORY_FACT ashf ON rc.SUPPLIER_KEY = ashf.SUPPLIER_KEY
+LEFT JOIN
+	payor_dw.POSTAL_ADDRESS pa ON ASHF.SUPPLIER_CORR_ADDRESS_KEY = pa.POSTAL_ADDRESS_KEY
+WHERE
+    rc.CLAIM_STATUS IN ('Needs Repair', 'Needs Review') AND
+    rrte.trigger_code = '7' AND
+    rc.row_num = 1;

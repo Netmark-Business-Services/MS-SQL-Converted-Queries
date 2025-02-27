@@ -1,0 +1,76 @@
+Query:
+ 
+WITH RecentClaims AS (
+    SELECT
+        cf.*,
+        ROW_NUMBER() OVER (PARTITION BY cf.CLAIM_HCC_ID ORDER BY cf.MOST_RECENT_PROCESS_TIME DESC) AS row_num
+    FROM
+        payor_dw.claim_fact cf
+    WHERE
+        cf.IS_CONVERTED = 'N'
+        AND cf.IS_TRIAL_CLAIM = 'N'
+        AND cf.IS_CURRENT = 'Y'
+        AND cf.CLAIM_STATUS IN ('Needs Repair', 'Needs Review')
+        AND cf.ENTRY_TIME >= TO_TIMESTAMP('2024-10-12 00:00:00', 'YYYY-MM-DD HH24:MI:SS')
+        AND cf.SI_SUPPLIER_TAX IN ('95-2977147', '30-0449168', '95-4651287')
+        --AND cf.CLAIM_HCC_ID = '2024318001657'
+),
+TriggerDataException AS (
+    SELECT
+        cfte.claim_fact_key,
+        LISTAGG(DISTINCT rrte.trigger_code, ', ') WITHIN GROUP (ORDER BY rrte.trigger_code) AS exception_trigger_code,
+        LISTAGG(DISTINCT rrte.trigger_desc, ', ') WITHIN GROUP (ORDER BY rrte.trigger_code) AS exception_trigger_desc
+    FROM
+        payor_dw.CLAIM_FACT_TO_EXCEPTION cfte
+    LEFT JOIN
+        payor_dw.review_repair_trigger rrte
+        ON cfte.review_repair_trigger_key = rrte.review_repair_trigger_key
+    GROUP BY cfte.claim_fact_key
+),
+TriggerDataReview AS (
+    SELECT
+        cftrt.claim_fact_key,
+        LISTAGG(DISTINCT rrt.trigger_code, ', ') WITHIN GROUP (ORDER BY rrt.trigger_code) AS review_trigger_code,
+        LISTAGG(DISTINCT rrt.trigger_desc, ', ') WITHIN GROUP (ORDER BY rrt.trigger_code) AS review_trigger_desc
+    FROM
+        payor_dw.CLAIM_FACT_TO_REVIEW_TRIGGER cftrt
+    LEFT JOIN
+        payor_dw.review_repair_trigger rrt
+        ON cftrt.review_repair_trigger_key = rrt.review_repair_trigger_key
+    GROUP BY cftrt.claim_fact_key
+)
+SELECT DISTINCT
+    rc.CLAIM_HCC_ID,
+    rc.CLAIM_STATUS,
+    tde.exception_trigger_code AS combined_exception_trigger_code,
+    tde.exception_trigger_desc AS combined_exception_trigger_desc,
+    tdr.review_trigger_code AS combined_review_trigger_code,
+    tdr.review_trigger_desc AS combined_review_trigger_desc,
+    rc.SI_SUPPLIER_NAME,
+    rc.SI_SUPPLIER_ID,
+    rc.SI_SUPPLIER_NPI,
+    rc.SI_SUPPLIER_TAX,
+    rc.FACILITY_LOCATION_NAME AS SUBMITTED_LOCATION_NAME,
+    rc.FACILITY_LOCATION_ID AS SUBMITTED_LOCATION_ID,
+    rc.FACILITY_LOCATION_NPI AS SUBMITTED_LOCATION_NPI,
+    dd.DATE_VALUE AS RECEIPT_DATE,
+    rc.ENTRY_TIME,
+    rc.MOST_RECENT_PROCESS_TIME
+FROM
+    RecentClaims rc
+LEFT JOIN
+    TriggerDataException tde ON rc.claim_fact_key = tde.claim_fact_key
+LEFT JOIN
+    TriggerDataReview tdr ON rc.claim_fact_key = tdr.claim_fact_key
+LEFT JOIN
+    payor_dw.DATE_DIMENSION dd ON rc.RECEIPT_DATE_KEY = dd.DATE_KEY
+WHERE
+    rc.row_num = 1
+  AND (
+        tde.exception_trigger_code IS NOT NULL
+        OR tdr.review_trigger_code IS NOT NULL
+    )
+  AND  (
+        (tde.exception_trigger_code IN ('7')) OR
+        (tdr.review_trigger_code IN ('1146'))
+    )

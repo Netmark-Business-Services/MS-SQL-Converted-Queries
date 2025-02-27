@@ -1,0 +1,97 @@
+--FINAL query 
+ 
+WITH RankedClaims AS (
+    SELECT
+        cf.*,
+        ROW_NUMBER() OVER (PARTITION BY cf.CLAIM_HCC_ID ORDER BY cf.MOST_RECENT_PROCESS_TIME DESC) AS rn
+    FROM
+        PAYOR_DW.CLAIM_FACT cf
+    WHERE
+        cf.IS_CONVERTED = 'N'
+        AND cf.IS_TRIAL_CLAIM = 'N'
+        AND cf.IS_CURRENT = 'Y'
+),
+FilteredSubscribers AS (
+    SELECT 
+        rcrc.SUBMITTED_SUBSCRIBER_ID, 
+        SUM(clf.PAID_AMOUNT) AS TotalPaidAmount
+    FROM
+        RankedClaims rcrc
+    LEFT JOIN payor_dw.CLAIM_LINE_FACT clf ON rcrc.CLAIM_FACT_KEY = clf.CLAIM_FACT_KEY
+    LEFT JOIN payor_dw.DATE_DIMENSION d6 ON clf.SERVICE_START_DATE_KEY = d6.DATE_KEY
+    WHERE 
+        rcrc.rn = 1
+        AND d6.DATE_VALUE BETWEEN TO_TIMESTAMP('2024-11-01 00:00:00', 'YYYY-MM-DD HH24:MI:SS') 
+                              AND TO_TIMESTAMP('2024-12-01 00:00:00', 'YYYY-MM-DD HH24:MI:SS')
+        AND rcrc.SUBMITTED_SUBSCRIBER_ID = '92358033D'
+    GROUP BY 
+        rcrc.SUBMITTED_SUBSCRIBER_ID
+    HAVING 
+        SUM(clf.PAID_AMOUNT) > 325000
+),
+SubscriberDetails AS (
+    SELECT
+        m.MEMBER_FULL_NAME AS "Subscriber Name",
+        rcrc.SUBMITTED_SUBSCRIBER_ID AS "Subscriber ID", 
+        CASE
+            WHEN dd.DATE_VALUE IS NOT NULL THEN 'Paid'
+            WHEN rcrc.CLAIM_STATUS IN ('Needs Review', 'Needs Repair') THEN 'Pended'
+            WHEN rcrc.CLAIM_STATUS IN ('Final', 'Denied') AND dd.DATE_VALUE IS NULL THEN 'Ready-to-pay'
+            ELSE 'Unknown'
+        END AS "Pay Status",
+        SUM(clf.BILLED_AMOUNT) AS "Amount Billed",
+        SUM(clf.PAID_AMOUNT) AS "Amount Paid"
+    FROM
+        RankedClaims rcrc
+    LEFT JOIN payor_dw.CLAIM_LINE_FACT clf ON rcrc.CLAIM_FACT_KEY = clf.CLAIM_FACT_KEY
+    LEFT JOIN payor_dw."MEMBER" m ON rcrc.MEMBER_KEY = m.MEMBER_KEY
+    LEFT JOIN payor_dw.DATE_DIMENSION d6 ON clf.SERVICE_START_DATE_KEY = d6.DATE_KEY
+--    LEFT JOIN payor_dw.DATE_DIMENSION dd ON clf.SERVICE_END_DATE_KEY = dd.DATE_KEY
+    LEFT JOIN payor_dw.PAYMENT_FACT_TO_CLAIM_FACT pftcf ON rcrc.CLAIM_FACT_KEY = pftcf.CLAIM_FACT_KEY
+	LEFT JOIN payor_dw.PAYMENT_FACT pf ON pftcf.PAYMENT_FACT_KEY = pf.PAYMENT_FACT_KEY
+	LEFT JOIN payor_dw.DATE_DIMENSION dd ON pf.PAYMENT_DATE_KEY = dd.DATE_KEY
+    WHERE 
+        rcrc.rn = 1
+        AND d6.DATE_VALUE BETWEEN TO_TIMESTAMP('2024-11-01 00:00:00', 'YYYY-MM-DD HH24:MI:SS') 
+                              AND TO_TIMESTAMP('2024-12-01 00:00:00', 'YYYY-MM-DD HH24:MI:SS')
+        AND rcrc.SUBMITTED_SUBSCRIBER_ID IN (SELECT SUBMITTED_SUBSCRIBER_ID FROM FilteredSubscribers)
+    GROUP BY 
+        m.MEMBER_FULL_NAME,
+        rcrc.SUBMITTED_SUBSCRIBER_ID,
+        CASE
+            WHEN dd.DATE_VALUE IS NOT NULL THEN 'Paid'
+            WHEN rcrc.CLAIM_STATUS IN ('Needs Review', 'Needs Repair') THEN 'Pended'
+            WHEN rcrc.CLAIM_STATUS IN ('Final', 'Denied') AND dd.DATE_VALUE IS NULL THEN 'Ready-to-pay'
+            ELSE 'Unknown'
+        END
+),
+FinalOutput AS (
+    SELECT
+        "Subscriber Name",
+        "Subscriber ID",
+        "Pay Status",
+        "Amount Billed",
+        "Amount Paid"
+    FROM
+        SubscriberDetails
+    UNION ALL
+    SELECT
+        "Subscriber Name",
+        "Subscriber ID",
+        'Total' AS "Pay Status",
+        SUM("Amount Billed") AS "Amount Billed",
+        SUM("Amount Paid") AS "Amount Paid"
+    FROM
+        SubscriberDetails
+    GROUP BY
+        "Subscriber Name",
+        "Subscriber ID"
+)
+SELECT 
+    "Subscriber Name",
+    "Subscriber ID",
+    "Pay Status",
+    TO_CHAR("Amount Billed", 'FM$999,999,999.00') AS "Amount Billed",
+    TO_CHAR("Amount Paid", 'FM$999,999,999.00') AS "Amount Paid"
+FROM
+    FinalOutput

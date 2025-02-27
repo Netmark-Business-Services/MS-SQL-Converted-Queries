@@ -1,0 +1,60 @@
+  WITH RecentClaims AS (
+    SELECT
+        cf.*,
+        ROW_NUMBER() OVER (PARTITION BY cf.CLAIM_HCC_ID ORDER BY cf.MOST_RECENT_PROCESS_TIME DESC) as row_num
+    FROM
+        payor_dw.claim_fact cf
+    WHERE
+        cf.IS_CONVERTED = 'N' AND
+        cf.IS_TRIAL_CLAIM = 'N' AND
+        cf.ENTRY_TIME >= TO_TIMESTAMP('2024-07-02 00:00:00', 'YYYY-MM-DD HH24:MI:SS')
+)
+SELECT  
+    rc.CLAIM_HCC_ID,
+    rc.CLAIM_STATUS,
+    cif.HCC_CLAIM_LINE_NUMBER,
+    cif.INTEREST_AMOUNT
+FROM
+    RecentClaims rc
+LEFT JOIN
+    payor_dw.DATE_DIMENSION dd ON rc.RECEIPT_DATE_KEY = dd.DATE_KEY
+LEFT JOIN 
+	PAYOR_DW.CLAIM_INTEREST_FACT cif ON rc.CLAIM_FACT_KEY = cif.CLAIM_FACT_KEY 
+WHERE
+    rc.row_num = 1
+    AND rc.CLAIM_HCC_ID ='2024172000514'
+
+##################################################################################################################################################################
+
+ WITH RecentClaims AS (
+    SELECT
+        cf.*,
+        ROW_NUMBER() OVER (PARTITION BY cf.CLAIM_HCC_ID ORDER BY cf.MOST_RECENT_PROCESS_TIME DESC) as row_num
+    FROM
+        payor_dw.claim_fact cf
+    WHERE
+        cf.IS_CONVERTED = 'N' AND
+        cf.IS_TRIAL_CLAIM = 'N' AND
+        cf.ENTRY_TIME >= TO_TIMESTAMP('2024-07-02 00:00:00', 'YYYY-MM-DD HH24:MI:SS')
+)
+SELECT  
+    rc.CLAIM_HCC_ID,
+    rc.CLAIM_STATUS,
+    aclf.CLAIM_LINE_HCC_ID ,
+    cif.HCC_CLAIM_LINE_NUMBER,
+    cif.INTEREST_AMOUNT,
+    aclf.BILLED_AMOUNT,
+    aclf.PAID_AMOUNT,
+    aclf.BASE_PAID_AMOUNT,
+    aclf.TOTAL_AMOUNT
+FROM
+    RecentClaims rc
+LEFT JOIN 
+	payor_dw.ALL_CLAIM_LINE_FACT aclf ON rc.CLAIM_FACT_KEY = aclf.CLAIM_FACT_KEY 
+LEFT JOIN
+    payor_dw.DATE_DIMENSION dd ON rc.RECEIPT_DATE_KEY = dd.DATE_KEY
+LEFT JOIN 
+	PAYOR_DW.CLAIM_INTEREST_FACT cif ON aclf.CLAIM_LINE_FACT_KEY = cif.CLAIM_LINE_FACT_KEY 
+WHERE
+    rc.row_num = 1
+    AND rc.CLAIM_HCC_ID ='2024172000514'
