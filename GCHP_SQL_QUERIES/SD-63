@@ -1,0 +1,47 @@
+ WITH RecentClaims AS (
+    SELECT
+        cf.*,
+        ROW_NUMBER() OVER (PARTITION BY cf.CLAIM_HCC_ID ORDER BY cf.MOST_RECENT_PROCESS_TIME DESC) as row_num
+    FROM
+        payor_dw.claim_fact cf
+    WHERE
+        cf.IS_CONVERTED = 'N' AND
+        cf.IS_TRIAL_CLAIM = 'N' AND
+        cf.ENTRY_TIME >= TO_TIMESTAMP('2024-07-02 00:00:00', 'YYYY-MM-DD HH24:MI:SS')
+)
+SELECT DISTINCT
+    rc.CLAIM_HCC_ID,
+    RC.SUBMITTED_SUBSCRIBER_ID,
+    rc.CLAIM_STATUS,
+    rc.CLAIM_TYPE_NAME,
+    csc.CLAIM_SOURCE_NAME,
+    rc.ENTRY_TIME,
+    dd.DATE_VALUE AS RECEIPT_DATE,
+    TRUNC(CURRENT_DATE) -  TRUNC(dd.DATE_VALUE) AS day_difference,
+    rc.MOST_RECENT_PROCESS_TIME,
+    rrte.trigger_code AS EXCEPTION_TRIGGER,
+    rrte.trigger_desc AS EXCEPTION_TRIGGER_DESC,
+    rrte.TRIGGER_DOMAIN_NAME AS EXCEPTION_TRIGGER_DOMAIN,
+    rrte.POLICY_NAME AS EXCEPTION_TRIGGER_POLICY_NAME,
+    rc.SI_SUPPLIER_NPI,
+    ashf.SUPPLIER_NPI  AS ASHF_SUPPLIER_NPI,
+    rc.SI_SUPPLIER_ID,
+    ashf.SUPPLIER_HCC_ID AS ASHF_SUPPLIER_HCC_ID ,
+    rc.SI_SUPPLIER_NAME,
+    ashf.SUPPLIER_NAME AS ashf_SUPPLIER_NAME  
+FROM
+    RecentClaims rc
+LEFT JOIN
+    payor_dw.CLAIM_SOURCE_CODE csc ON rc.CLAIM_SOURCE_KEY = csc.CLAIM_SOURCE_KEY
+LEFT JOIN
+    payor_dw.CLAIM_FACT_TO_EXCEPTION cfte ON rc.claim_fact_key = cfte.claim_fact_key
+LEFT JOIN
+    payor_dw.review_repair_trigger rrte ON cfte.review_repair_trigger_key = rrte.review_repair_trigger_key
+LEFT JOIN
+    payor_dw.DATE_DIMENSION dd ON rc.RECEIPT_DATE_KEY = dd.DATE_KEY
+LEFT JOIN
+	payor_dw.supplier ashf ON rc.SUPPLIER_KEY = ashf.SUPPLIER_KEY
+WHERE
+    rc.CLAIM_STATUS IN ('Needs Repair', 'Needs Review') AND
+    rrte.trigger_code = '1' AND
+    rc.row_num = 1;

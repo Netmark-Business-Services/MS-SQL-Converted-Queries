@@ -1,0 +1,31 @@
+
+
+
+	
+SELECT
+	  rc.CLAIM_HCC_ID,
+	  rc.CLAIM_FACT_KEY ,
+      rc.CLAIM_STATUS,
+      SUM(clf.BILLED_AMOUNT) AS TOTAL_BILLED_AMOUNT,
+      SUM(clf.PAID_AMOUNT) AS TOTAL_PAID_AMOUNT,
+      rc.MOST_RECENT_PROCESS_TIME
+FROM
+    payor_dw.claim_fact rc
+LEFT JOIN
+    payor_dw.CLAIM_LINE_FACT clf ON rc.CLAIM_FACT_KEY = clf.CLAIM_FACT_KEY
+LEFT JOIN
+    payor_dw.CLAIM_FACT_TO_REVIEW_TRIGGER cftrt ON rc.CLAIM_FACT_KEY = cftrt.CLAIM_FACT_KEY
+LEFT JOIN
+    payor_dw.review_repair_trigger rrt ON cftrt.review_repair_trigger_key = rrt.review_repair_trigger_key
+WHERE  
+	   rc.IS_CONVERTED = 'N'
+       AND rc.IS_TRIAL_CLAIM = 'N'
+       --AND rc.IS_CURRENT = 'Y'
+       AND rrt.trigger_code IN ('44')
+GROUP BY
+	  rc.CLAIM_HCC_ID,
+	  rc.CLAIM_FACT_KEY,
+      rc.CLAIM_STATUS,
+      rc.MOST_RECENT_PROCESS_TIME
+ORDER BY 
+	rc.CLAIM_HCC_ID;

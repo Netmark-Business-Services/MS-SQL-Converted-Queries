@@ -1,0 +1,48 @@
+import pandas as pd
+
+# Load the existing Excel data
+input_file = 'Updated_Tax-Entity_Data.xlsx'  # Replace with your input Excel file name
+output_file = 'New_Format_Tax_Entity_Data.xlsx'  # Replace with your desired output file name
+data = pd.read_excel(input_file)
+
+# Filter records with TAX_ENTITY_STATUS as 'Active'
+data = data[data['TAX_ENTITY_STATUS'] == 'Active']
+
+# Helper function to extract the first name from a full name
+def extract_first_name(full_name):
+    return full_name.split()[0] if isinstance(full_name, str) else ""
+
+# Create new columns as per the requirements
+data['Recipient_TYPE'] = data.apply(
+    lambda row: 'Individual' if pd.notnull(row.get('TAX_ID')) and pd.notnull(row.get('SSN')) else 'Business', axis=1
+)
+data['Recipient_TIN_Type'] = data.apply(
+    lambda row: 'EIN' if pd.notnull(row.get('TAX_ID')) else ('SSN' if pd.notnull(row.get('SSN')) else ''),
+    axis=1
+)
+data['Recipient_TIN'] = data['TAX_ID']
+data['Recipient_Business_Name'] = data.apply(
+    lambda row: '' if row['Recipient_TYPE'] == 'Individual' else row['TAX_NAME'], axis=1
+)
+data['Recipient_First_Name'] = data.apply(
+    lambda row: extract_first_name(row['TAX_NAME']) if row['Recipient_TYPE'] == 'Individual' else '', axis=1
+)
+data['Recipient_Status'] = data['TAX_ENTITY_STATUS']
+data['Recipient Address'] = data['TAX_ADDRESS']
+data['Recipient City'] = data['TAX_CITY']
+data['Recipient State'] = data['TAX_STATE']
+data['Recipient ZIP'] = data['TAX_ZIP_CODE']
+
+# Select only the new fields for the output
+output_data = data[
+    [
+        'Recipient_TYPE', 'Recipient_TIN_Type', 'Recipient_TIN',
+        'Recipient_Business_Name', 'Recipient_First_Name', 'Recipient Address',
+        'Recipient City', 'Recipient State', 'Recipient ZIP'
+    ]
+]
+
+# Save to a new Excel file
+output_data.to_excel(output_file, index=False)
+
+print(f"Data successfully converted and saved to {output_file}!")

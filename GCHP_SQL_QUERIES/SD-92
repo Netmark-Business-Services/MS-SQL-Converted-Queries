@@ -1,0 +1,104 @@
+ -- Claim Line Level
+ 
+ WITH RecentClaims AS (
+    SELECT
+        cf.*,
+        ROW_NUMBER() OVER (PARTITION BY cf.CLAIM_HCC_ID ORDER BY cf.MOST_RECENT_PROCESS_TIME DESC) as row_num
+    FROM
+        payor_dw.claim_fact cf
+    WHERE
+        cf.IS_CONVERTED = 'Y' AND
+        cf.IS_TRIAL_CLAIM = 'N' 
+        --AND cf.ENTRY_TIME >= TO_TIMESTAMP('2024-07-02 00:00:00', 'YYYY-MM-DD HH24:MI:SS')
+)
+SELECT  
+    rc.CLAIM_HCC_ID,
+    aclf.CLAIM_LINE_HCC_ID ,
+    rc.CLAIM_STATUS,
+    rc.CLAIM_TYPE_NAME,
+    csc.CLAIM_SOURCE_NAME,
+    aclf.BASE_ALLOWED_AMOUNT ,
+    aclf.EFFECTIVE_ALLOWED_AMOUNT ,
+    aclf.BILLED_AMOUNT ,
+    aclf.PAID_AMOUNT ,
+    dd.DATE_VALUE AS RECEIPT_DATE,
+    TRUNC(CURRENT_DATE) -  TRUNC(dd.DATE_VALUE) AS Receipt_day_difference,
+    rc.ENTRY_TIME,
+    rc.MOST_RECENT_PROCESS_TIME,
+    rc.SI_SUPPLIER_NPI, 
+    ashf.SUPPLIER_NPI  AS ASHF_SUPPLIER_NPI,
+    rc.SI_SUPPLIER_ID,
+    ashf.SUPPLIER_HCC_ID AS ASHF_SUPPLIER_HCC_ID ,
+    rc.SI_SUPPLIER_NAME,
+    ashf.SUPPLIER_NAME AS ashf_SUPPLIER_NAME  
+FROM
+    RecentClaims rc
+LEFT JOIN 
+	payor_dw.ALL_CLAIM_LINE_FACT aclf ON rc.CLAIM_FACT_KEY = aclf.CLAIM_FACT_KEY 
+LEFT JOIN
+    payor_dw.CLAIM_SOURCE_CODE csc ON rc.CLAIM_SOURCE_KEY = csc.CLAIM_SOURCE_KEY
+LEFT JOIN
+    payor_dw.DATE_DIMENSION dd ON rc.RECEIPT_DATE_KEY = dd.DATE_KEY
+LEFT JOIN 
+	payor_dw.supplier ashf ON rc.SUPPLIER_KEY = ashf.SUPPLIER_KEY 
+WHERE
+    rc.row_num = 1
+######################################################################################################################################################################
+
+--Claim Level
+
+WITH RecentClaims AS (
+    SELECT
+        cf.*,
+        ROW_NUMBER() OVER (PARTITION BY cf.CLAIM_HCC_ID ORDER BY cf.MOST_RECENT_PROCESS_TIME DESC) as row_num
+    FROM
+        payor_dw.claim_fact cf
+    WHERE
+        cf.IS_CONVERTED = 'Y' AND
+        cf.IS_TRIAL_CLAIM = 'N' 
+        --AND cf.ENTRY_TIME >= TO_TIMESTAMP('2024-07-02 00:00:00', 'YYYY-MM-DD HH24:MI:SS')
+),
+AggregatedClaimLines AS (
+    SELECT
+        aclf.CLAIM_FACT_KEY,
+        SUM(aclf.BASE_ALLOWED_AMOUNT) AS TOTAL_BASE_ALLOWED_AMOUNT,
+        SUM(aclf.EFFECTIVE_ALLOWED_AMOUNT) AS TOTAL_EFFECTIVE_ALLOWED_AMOUNT,
+        SUM(aclf.BILLED_AMOUNT) AS TOTAL_BILLED_AMOUNT,
+        SUM(aclf.PAID_AMOUNT) AS TOTAL_PAID_AMOUNT
+    FROM
+        payor_dw.ALL_CLAIM_LINE_FACT aclf
+    GROUP BY
+        aclf.CLAIM_FACT_KEY
+)
+SELECT  
+    rc.CLAIM_HCC_ID,
+    rc.CLAIM_STATUS,
+    rc.CLAIM_TYPE_NAME,
+    csc.CLAIM_SOURCE_NAME,
+    aclf_agg.TOTAL_BASE_ALLOWED_AMOUNT,
+    aclf_agg.TOTAL_EFFECTIVE_ALLOWED_AMOUNT,
+    aclf_agg.TOTAL_BILLED_AMOUNT,
+    aclf_agg.TOTAL_PAID_AMOUNT,
+    rc.is_converted,
+    dd.DATE_VALUE AS RECEIPT_DATE,
+    TRUNC(CURRENT_DATE) - TRUNC(dd.DATE_VALUE) AS Receipt_day_difference,
+    rc.ENTRY_TIME,
+    rc.MOST_RECENT_PROCESS_TIME,
+    rc.SI_SUPPLIER_NPI, 
+    ashf.SUPPLIER_NPI AS ASHF_SUPPLIER_NPI,
+    rc.SI_SUPPLIER_ID,
+    ashf.SUPPLIER_HCC_ID AS ASHF_SUPPLIER_HCC_ID,
+    rc.SI_SUPPLIER_NAME,
+    ashf.SUPPLIER_NAME AS ASHF_SUPPLIER_NAME
+FROM
+    RecentClaims rc
+LEFT JOIN 
+    AggregatedClaimLines aclf_agg ON rc.CLAIM_FACT_KEY = aclf_agg.CLAIM_FACT_KEY
+LEFT JOIN
+    payor_dw.CLAIM_SOURCE_CODE csc ON rc.CLAIM_SOURCE_KEY = csc.CLAIM_SOURCE_KEY
+LEFT JOIN
+    payor_dw.DATE_DIMENSION dd ON rc.RECEIPT_DATE_KEY = dd.DATE_KEY
+LEFT JOIN 
+    payor_dw.supplier ashf ON rc.SUPPLIER_KEY = ashf.SUPPLIER_KEY 
+WHERE
+    rc.row_num = 1

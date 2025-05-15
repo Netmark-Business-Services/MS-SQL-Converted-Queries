@@ -1,0 +1,16 @@
+# Function to process each row and generate the desired format
+def process_row(row):
+    # First: '2' if TAX_ID and SSN are the same, otherwise '1'
+    first = '2' if row['TAX_ID'] == row['SSN'] else '1'
+    
+    # Second: TAX_ID without dashes
+    second = row['TAX_ID'].replace("-", "")
+    
+    # Third: TAX_NAME
+    third = row['TAX_NAME']
+    
+    # Fourth: Fixed string "Q3 2024"
+    fourth = "Q3 2024"
+    
+    # Combine all into the desired format
+    return f"{first};{second};{third};{fourth}"

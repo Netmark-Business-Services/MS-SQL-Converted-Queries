@@ -1,0 +1,121 @@
+   
+   WITH RankedClaims AS (
+    SELECT
+        cf.*,
+        ROW_NUMBER() OVER (PARTITION BY cf.CLAIM_HCC_ID ORDER BY cf.MOST_RECENT_PROCESS_TIME DESC) AS rn
+    FROM
+        CLAIM_FACT cf
+    WHERE
+        cf.IS_CONVERTED = 'N' AND
+        cf.IS_TRIAL_CLAIM = 'N' AND 
+        cf.IS_CURRENT = 'Y' AND 
+        cf.ENTRY_TIME >= TO_TIMESTAMP('2024-12-23 00:00:00', 'YYYY-MM-DD HH24:MI:SS') AND 
+        cf.ENTRY_TIME < TO_TIMESTAMP('2024-12-31 12:00:00', 'YYYY-MM-DD HH24:MI:SS')
+),
+AggregatedClaimLines AS (
+    SELECT
+        aclf.CLAIM_FACT_KEY,
+        COUNT(aclf.CLAIM_LINE_HCC_ID) AS Total_Claim_lines_count,
+        SUM(aclf.BILLED_AMOUNT) AS TOTAL_BILLED_AMOUNT,
+        SUM(aclf.PAID_AMOUNT) AS TOTAL_PAID_AMOUNT
+    FROM
+        payor_dw.ALL_CLAIM_LINE_FACT aclf
+    LEFT JOIN 
+        PAYOR_DW.POSTAL_ADDRESS pa ON aclf.SERVICE_RENDERED_ADDRESS_KEY = pa.POSTAL_ADDRESS_KEY 
+    GROUP BY
+        aclf.CLAIM_FACT_KEY
+),
+FinalResults AS (
+    SELECT
+        rc.CLAIM_HCC_ID,
+        aclf_agg.Total_Claim_lines_count,
+        rc.CLAIM_STATUS,
+        rc.CLAIM_TYPE_NAME,
+        csc.CLAIM_SOURCE_NAME,
+        dd.DATE_VALUE AS Receipt_Date,
+        rc.CLAIM_LEVEL_SUBMITTED_CHARGES AS BILLED_AMOUNT,
+        aclf_agg.TOTAL_PAID_AMOUNT,
+        suppaydate.DATE_VALUE AS Payment_Date
+    FROM RankedClaims rc
+    LEFT JOIN
+        AggregatedClaimLines aclf_agg ON rc.CLAIM_FACT_KEY = aclf_agg.CLAIM_FACT_KEY
+    LEFT JOIN
+        payor_dw.CLAIM_SOURCE_CODE csc ON rc.CLAIM_SOURCE_KEY = csc.CLAIM_SOURCE_KEY
+    LEFT JOIN
+        payor_dw.PAYMENT_FACT_TO_CLAIM_FACT pftcf ON rc.CLAIM_FACT_KEY = pftcf.CLAIM_FACT_KEY
+    LEFT JOIN
+        payor_dw.PAYMENT_FACT pf ON pftcf.PAYMENT_FACT_KEY = pf.PAYMENT_FACT_KEY
+    LEFT JOIN
+        payor_dw.DATE_DIMENSION dd ON rc.RECEIPT_DATE_KEY = dd.DATE_KEY
+    LEFT JOIN
+        payor_dw.DATE_DIMENSION suppaydate ON pf.PAYMENT_DATE_KEY = suppaydate.DATE_KEY
+    WHERE
+        rn = 1
+)
+SELECT
+    SUM(FinalResults.Total_Claim_lines_count) AS Total_Claim_lines_count_sum,
+    COUNT(FinalResults.CLAIM_HCC_ID) AS Total_CLAIM_HCC_ID_Count
+FROM
+    FinalResults;
+
+##################################################################################################################################################################
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+--Claim-line-Count
+------------------------------------------------------------------------------------------------------------------------------------------------------------  
+WITH RankedClaims AS (
+    SELECT
+        cf.*,
+        ROW_NUMBER() OVER (PARTITION BY cf.CLAIM_HCC_ID ORDER BY cf.MOST_RECENT_PROCESS_TIME DESC) AS rn
+    FROM
+        CLAIM_FACT cf
+    WHERE
+        cf.IS_CONVERTED = 'N'
+        AND cf.IS_TRIAL_CLAIM = 'N'
+        AND cf.ENTRY_TIME >= TO_TIMESTAMP('2024-07-02 00:00:00', 'YYYY-MM-DD HH24:MI:SS')
+),
+AggregatedClaimLines AS (
+    SELECT
+        aclf.CLAIM_FACT_KEY,
+        COUNT(aclf.CLAIM_LINE_HCC_ID) AS Total_Claim_lines_count,
+        SUM(aclf.BILLED_AMOUNT) AS TOTAL_BILLED_AMOUNT,
+        SUM(aclf.PAID_AMOUNT) AS TOTAL_PAID_AMOUNT
+    FROM
+        payor_dw.ALL_CLAIM_LINE_FACT aclf
+    LEFT JOIN 
+        PAYOR_DW.POSTAL_ADDRESS pa ON aclf.SERVICE_RENDERED_ADDRESS_KEY = pa.POSTAL_ADDRESS_KEY 
+    GROUP BY
+        aclf.CLAIM_FACT_KEY
+)
+SELECT
+    rc.CLAIM_HCC_ID,
+    aclf_agg.Total_Claim_lines_count,
+    CASE
+        WHEN aclf_agg.Total_Claim_lines_count BETWEEN 0 AND 5 THEN '0-5 lines'
+        WHEN aclf_agg.Total_Claim_lines_count BETWEEN 6 AND 10 THEN '6-10 lines'
+        WHEN aclf_agg.Total_Claim_lines_count BETWEEN 11 AND 15 THEN '11-15 lines'
+        WHEN aclf_agg.Total_Claim_lines_count BETWEEN 16 AND 20 THEN '16-20 lines'
+        ELSE '20+ lines'
+    END AS line_count_range,
+    rc.CLAIM_STATUS,
+    rc.CLAIM_TYPE_NAME,
+    csc.CLAIM_SOURCE_NAME,
+    dd.DATE_VALUE AS Receipt_Date,
+    rc.CLAIM_LEVEL_SUBMITTED_CHARGES AS BILLED_AMOUNT,
+    aclf_agg.TOTAL_PAID_AMOUNT,
+    suppaydate.DATE_VALUE AS Payment_Date
+FROM RankedClaims rc
+LEFT JOIN
+    AggregatedClaimLines aclf_agg ON rc.CLAIM_FACT_KEY = aclf_agg.CLAIM_FACT_KEY
+LEFT JOIN
+    payor_dw.CLAIM_SOURCE_CODE csc ON rc.CLAIM_SOURCE_KEY = csc.CLAIM_SOURCE_KEY
+LEFT JOIN
+    payor_dw.PAYMENT_FACT_TO_CLAIM_FACT pftcf ON rc.CLAIM_FACT_KEY = pftcf.CLAIM_FACT_KEY
+LEFT JOIN
+    payor_dw.PAYMENT_FACT pf ON pftcf.PAYMENT_FACT_KEY = pf.PAYMENT_FACT_KEY
+LEFT JOIN
+    payor_dw.DATE_DIMENSION dd ON rc.RECEIPT_DATE_KEY = dd.DATE_KEY
+LEFT JOIN
+    payor_dw.DATE_DIMENSION suppaydate ON pf.PAYMENT_DATE_KEY = suppaydate.DATE_KEY
+WHERE
+    rn = 1;

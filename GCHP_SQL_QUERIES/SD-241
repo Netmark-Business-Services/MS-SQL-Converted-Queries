@@ -1,0 +1,113 @@
+
+
+
+
+
+
+
+
+
+
+WITH RecentClaims AS (
+    SELECT
+        cf.*,
+        ROW_NUMBER() OVER (PARTITION BY cf.CLAIM_HCC_ID ORDER BY cf.MOST_RECENT_PROCESS_TIME DESC) as row_num
+    FROM
+        payor_dw.claim_fact cf
+    WHERE
+        cf.IS_CONVERTED = 'N' AND
+        cf.IS_TRIAL_CLAIM = 'N' AND
+        cf.IS_CURRENT = 'Y'  
+)
+SELECT 
+    rc.CLAIM_HCC_ID,
+    rc.CLAIM_STATUS,
+	rc.CLAIM_TYPE_NAME,
+	rc.FREQUENCY_CODE,
+	rc.SUPPLIER_INVOICE_ID,
+	rc.CUR_SUPPLIER_INVOICE_ID,
+	rc.BLUE_CARD_RF_FACT_KEY,
+	rc.BLUE_CARD_SF_HDR_INFO_FACT_KEY,
+	rc.BC_DF_HDR_FACT_KEY,
+    m.MEMBER_HCC_ID,	
+   	m.MEMBER_FIRST_NAME,	
+    m.MEMBER_LAST_NAME, 
+    ashf.SUPPLIER_NAME,
+    ashf.SUPPLIER_NPI ,
+    ashf.SUPPLIER_HCC_ID ,
+    TE.TAX_ID ,
+    pt.PROVIDER_TAXONOMY_NAME ,
+    sl.SUPPLIER_LOCATION_HCC_ID ,
+    sl.SUPPLIER_LOCATION_NAME ,
+    sl.SUPPLIER_LOCATION_NPI ,
+-- 	rrt.trigger_code AS Claim_Review_Trigger,  
+--    rrt.trigger_desc AS Claim_Review_Trigger_desc,
+--	rrt2.trigger_code AS Claim_Exception,  
+--    rrt2.trigger_desc AS Claim_Exception_desc,
+    dd.DATE_VALUE AS Receipt_Date,
+    rc.ENTRY_TIME,
+    rc.MOST_RECENT_PROCESS_TIME 
+FROM
+    RecentClaims rc
+LEFT JOIN
+    payor_dw.CLAIM_SOURCE_CODE csc ON rc.CLAIM_SOURCE_KEY = csc.CLAIM_SOURCE_KEY
+LEFT JOIN
+    payor_dw.DATE_DIMENSION dd ON rc.RECEIPT_DATE_KEY = dd.DATE_KEY
+LEFT JOIN
+	payor_dw.supplier ashf ON rc.SUPPLIER_KEY = ashf.SUPPLIER_KEY
+LEFT JOIN 
+	payor_dw.SUPPLIER_LOCATION sl ON rc.LOCATION_KEY = sl.SUPPLIER_LOCATION_KEY 
+LEFT JOIN 
+	payor_dw.TAX_ENTITY te ON ASHF.TAX_ENTITY_KEY = TE.TAX_ENTITY_KEY 
+LEFT JOIN
+	payor_dw.PROVIDER_TAXONOMY pt ON ashf.PRIMARY_CLASSIFICATION_KEY = pt.PROVIDER_TAXONOMY_KEY
+LEFT JOIN
+    payor_dw."MEMBER" m ON rc.MEMBER_KEY = m.MEMBER_KEY
+--LEFT JOIN
+--     payor_dw.CLAIM_FACT_TO_REVIEW_TRIGGER cftrt ON rc.claim_fact_key = cftrt.claim_fact_key
+--LEFT JOIN
+--     payor_dw.review_repair_trigger rrt ON cftrt.review_repair_trigger_key = rrt.review_repair_trigger_key
+--LEFT JOIN
+--     payor_dw.CLAIM_FACT_TO_EXCEPTION cfte ON rc.claim_fact_key = cfte.claim_fact_key
+--LEFT JOIN
+--     payor_dw.review_repair_trigger rrt2 ON cfte.review_repair_trigger_key = rrt2.review_repair_trigger_key
+WHERE
+	rc.FREQUENCY_CODE IN ('7','8')
+	--rc.CLAIM_STATUS IN ('Final')
+	--rc.CLAIM_HCC_ID = '2024306001465'
+--    rc.row_num = 1  
+    --AND rc.ENTRY_TIME >= TO_TIMESTAMP('2025-01-17 00:00:00', 'YYYY-MM-DD HH24:MI:SS')
+    --AND rc.ENTRY_TIME < TO_TIMESTAMP('2025-01-18 00:00:00', 'YYYY-MM-DD HH24:MI:SS')
+    -- rc.FREQUENCY_CODE = '7'
+--   -- AND dd.DATE_VALUE >= TO_TIMESTAMP('2025-01-16 00:00:00', 'YYYY-MM-DD HH24:MI:SS') 
+--    AND dd.DATE_VALUE < TO_TIMESTAMP('2025-01-17 00:00:00', 'YYYY-MM-DD HH24:MI:SS')
+    --AND rc.CLAIM_STATUS IN ('Needs Review','Needs Repair')
+     --rc.CLAIM_HCC_ID IS NULL 
+   
+    
+    
+    
+    
+ SELECT * FROM SUPPLIER_CLAIM_REVIEW_FACT scrf 
+ 
+ 
+  SELECT * FROM SUPPLIER_HISTORY_FACT shf 
+ 
+ SELECT * FROM WB_SUPPLIER_REPAIR_FACT wsrf 
+ SELECT * FROM WB_SUPPLIER_REVIEW_FACT wsrf 
+ 
+ 
+ SELECT * FROM ALL_CLAIM_FACT acf WHERE acf.CLAIM_CUR_HCC_ID = '2024179000927'
+  SELECT * FROM ALL_CLAIM_FACT acf WHERE acf.CLAIM_HCC_ID = '2024179000927'
+ 
+ 
+ SELECT * FROM ALL_SUPPLIER_HISTORY_FACT ashf 
+ 
+ 
+ 
+ SELECT * FROM TRANSACTION_FACT
+ 
+ 
+ SELECT * FROM CLAIM_FACT cf WHERE cf.EXTERNAL_CLAIM_NUMBER = '2024306001465'  --'3623154180'
+
+ SELECT * FROM CLAIM_FACT c WHERE c.CLAIM_HCC_ID = '2024250001294'

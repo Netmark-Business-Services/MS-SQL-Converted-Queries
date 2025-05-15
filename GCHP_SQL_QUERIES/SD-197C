@@ -1,0 +1,10 @@
+# Apply the function to each row in the DataFrame
+formatted_data = data.apply(process_row, axis=1)
+
+
+# Save the formatted data to a .txt file
+output_file = "output.txt"
+with open(output_file, "w") as file:
+    file.write("\n".join(formatted_data))
+
+print(f"Data has been successfully written to {output_file}")
